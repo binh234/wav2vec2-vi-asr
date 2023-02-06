@@ -12,13 +12,6 @@ tags:
 - speechbrain
 - Transformer
 license: cc-by-nc-4.0
-widget:
-- example_title: VLSP ASR 2020 test T1
-  src: https://huggingface.co/nguyenvulebinh/wav2vec2-base-vietnamese-250h/raw/main/audio-test/t1_0001-00010.wav
-- example_title: VLSP ASR 2020 test T1
-  src: https://huggingface.co/nguyenvulebinh/wav2vec2-base-vietnamese-250h/raw/main/audio-test/t1_utt000000042.wav
-- example_title: VLSP ASR 2020 test T2
-  src: https://huggingface.co/nguyenvulebinh/wav2vec2-base-vietnamese-250h/raw/main/audio-test/t2_0000006682.wav
 model-index:
 - name: Wav2vec2 Base Vietnamese 270h
   results:
@@ -50,7 +43,30 @@ Fine-tuned Wav2Vec2 model on Vietnamese Speech Recognition task using about 270h
 When using this model, make sure that your speech input is sampled at 16kHz.  
 Please refer to [huggingface blog](https://huggingface.co/blog/fine-tune-wav2vec2-english) or [speechbrain](https://github.com/speechbrain/speechbrain/tree/develop/recipes/CommonVoice/ASR/CTC) on how to fine-tune Wav2Vec2 model on a specific language.
 
+### Tokenizers
+
+```python
+from tokenizer import Wav2Vec2WordpieceTokenizer
+
+rhyme_tokenizer = Wav2Vec2WordpieceTokenizer.from_pretrained("/content/virhyme")
+syllable_tokenizer = Wav2Vec2WordpieceTokenizer.from_pretrained("/content/visyllable")
+
+text = "mức độ gia tăng dân số trong quý bốn"
+
+print(rhyme_tokenizer.tokenize(text))
+# ['m', 'ức', '|', 'đ', 'ộ', '|', 'gi', 'a', '|', 't', 'ăng', '|', 'd', 'ân', '|', 's', 'ố', '|', 'tr', 'ong', '|', 'qu', 'ý', '|', 'b', 'ốn']
+print(syllable_tokenizer.tokenize(text))
+# ['m', 'ức', '|', 'đ', 'ộ', '|', 'gi', 'a', '|', 't', 'ă', 'ng', '|', 'd', 'â', 'n', '|', 's', 'ố', '|', 'tr', 'o', 'ng', '|', 'q', 'uý', '|', 'b', 'ố', 'n']
+```
+
 ### Pretrained model
+| Data | Model link |
+|---|---|
+|100h| [viwav2vec2-base-100h](https://huggingface.co/dragonSwing/viwav2vec2-base-100h) |
+|1500h| [viwav2vec2-base-1.5k](https://huggingface.co/dragonSwing/viwav2vec2-base-1.5k) |
+|3000h| [viwav2vec2-base-3k](https://huggingface.co/dragonSwing/viwav2vec2-base-3k) |
+
+### Fine-tuned model
 - Pretrained model: [link](https://huggingface.co/dragonSwing/wav2vec2-base-vn-270h)
 - Demonstration: [link](https://huggingface.co/spaces/dragonSwing/wav2vec2-vi-asr)
 
@@ -60,14 +76,10 @@ Please refer to [huggingface blog](https://huggingface.co/blog/fine-tune-wav2vec
 |without LM| 8.41 | 17.82 |
 |with 4-grams LM| 4.04 | 9.66 |
 
-The language model was trained using [OSCAR](https://huggingface.co/datasets/oscar-corpus/OSCAR-2109) dataset on about 32GB of crawled text.
+The language model was trained using [OSCAR](https://huggingface.co/datasets/oscar-corpus/OSCAR-2109) dataset on about 30GB of crawled text.
 
 ### Install SpeechBrain
 To use this model, you should install speechbrain from source. This is not required for speechbrain version > 0.5.10
-
-```bash
-pip install git+https://github.com/speechbrain/speechbrain.git@develop
-```
 
 ### Usage
 The model can be used directly (without a language model) as follows:
