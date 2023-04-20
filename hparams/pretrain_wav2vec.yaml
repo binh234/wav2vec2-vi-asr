@@ -12,7 +12,7 @@ save_folder: !ref <output_folder>/save
 log_folder: !ref <output_folder>/log
 train_log: !ref <output_folder>/train_log.txt
 
-# wav2vec2_hub: dragonSwing/viwav2vec2-base-3k
+wav2vec2_hub: facebook/wav2vec2-base
 
 # Data files
 data_folder: ../data # e.g, /localscratch/cv-corpus-5.1-2020-06-22/fr
