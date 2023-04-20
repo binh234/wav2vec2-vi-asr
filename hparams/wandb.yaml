@@ -1,0 +1,14 @@
+method: fine-tunning
+metric:
+  name: WER
+  goal: minimize
+parameters:
+  optimizer:
+    values: "AdamW"
+    training_steps: 256000
+    weight_decay: 0.0005
+  scheduler:
+    values: "NoamScheduler"
+    lr_initial: 0.25
+    n_warmup_steps: 10000
+    model_size: 768

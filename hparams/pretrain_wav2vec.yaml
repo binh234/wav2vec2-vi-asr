@@ -1,0 +1,112 @@
+# ################################
+# Model: wav2vec2 Pretraining
+# Authors: Binh Le 2021
+# ################################
+
+# Seed needs to be set at top of yaml, before objects with parameters are made
+# pretrained_model_name_or_path
+seed: 3407
+__set_seed: !!python/object/apply:torch.manual_seed [!ref <seed>]
+output_folder: !ref results/wav2vec2_pretrain/<seed>
+save_folder: !ref <output_folder>/save
+log_folder: !ref <output_folder>/log
+train_log: !ref <output_folder>/train_log.txt
+
+# wav2vec2_hub: dragonSwing/viwav2vec2-base-3k
+
+# Data files
+data_folder: ../data # e.g, /localscratch/cv-corpus-5.1-2020-06-22/fr
+data_folder_rirs: /content/data
+root_folder: /root/.cache/huggingface/datasets/downloads/extracted
+train_csv: !ref <data_folder>/pretrain_train.csv
+valid_csv: !ref <data_folder>/pretrain_dev.csv
+test_csv: !ref <data_folder>/pretrain_dev.csv
+sort_key: duration
+sorting: ascending
+skip_prep: true # Skip data preparation
+
+# We remove utterance longer than 10s in the train/dev/test sets as
+# longer sentences certainly correspond to "open microphones".
+avoid_if_longer_than: 16
+avoid_if_shorter_than: 2
+
+# Training parameters
+number_of_epochs: 47
+cold_epochs: -2
+lr: 0.0002
+cold_lr: 0.001
+auto_mix_prec: true
+sample_rate: 16000
+ckpt_interval_minutes: 180 # save checkpoint every N min
+normalize_wav: true
+dnn_neurons: 768
+
+mask_length: 10
+mask_prob: 0.65
+freeze_wav2vec: False
+
+num_training_steps: 132000
+max_gumbel_temperature: 1.5
+min_gumbel_temperature: 0.5
+gumbel_temperature_decay: 0.99999
+min_negatives: 100
+max_negatives: 100
+
+# With data_parallel batch_size is split into N jobs
+# With DDP batch_size is multiplied by N jobs
+# Must be 8 per GPU to fit 32GB of VRAM
+batch_size: 4
+test_batch_size: 1
+gradient_clipping: 2.0
+gradient_accumulation: 48
+min_accumulation: 48
+accumulation_sec: 2700
+
+dataloader_options:
+  batch_size: !ref <batch_size>
+  num_workers: 2
+  pin_memory: false
+  drop_last: True
+
+test_dataloader_options:
+  batch_size: 4
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+  limit: !ref <number_of_epochs>
+
+augmentation: !new:speechbrain.processing.speech_augmentation.SpeedPerturb
+  orig_freq: !ref <sample_rate>
+  speeds: [90, 95, 100, 105, 110]
+
+wav2vec2: !new:speechbrain.lobes.models.huggingface_wav2vec.HuggingFaceWav2Vec2Pretrain
+  source: !ref <wav2vec2_hub>
+  save_path: null
+  mask_prob: !ref <mask_prob>
+  mask_length: !ref <mask_length>
+  normalize_wav: false
+
+modules:
+  wav2vec2: !ref <wav2vec2>
+
+model_opt_class: !name:torch.optim.AdamW
+  lr: !ref <lr>
+  betas: (0.9, 0.98)
+  eps: 0.000000001
+  weight_decay: 0.005
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+  checkpoints_dir: !ref <save_folder>
+  recoverables:
+    wav2vec2: !ref <wav2vec2>
+    counter: !ref <epoch_counter>
+
+train_logger: !new:speechbrain.utils.train_logger.WandBLogger
+  initializer: !name:wandb.init
+  project: wav2vec2_pretrain
+  yaml_config: hparams/wandb.yaml
+
+train_logger_txt: !new:speechbrain.utils.train_logger.FileTrainLogger
+  save_file: !ref <train_log>
+
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+  collect_in: !ref <save_folder>

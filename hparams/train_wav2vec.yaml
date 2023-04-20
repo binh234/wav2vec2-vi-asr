@@ -1,0 +1,209 @@
+# ################################
+# Model: wav2vec2 + CTC
+# Augmentation: SpecAugment
+# Authors: Binh Le 2021
+# ################################
+
+# Seed needs to be set at top of yaml, before objects with parameters are made
+seed: 3407
+__set_seed: !!python/object/apply:torch.manual_seed [!ref <seed>]
+output_folder: !ref results/wav2vec2_ctc/<seed>
+wer_file: !ref <output_folder>/wer.txt
+save_folder: !ref <output_folder>/save
+train_log: !ref <output_folder>/train_log.txt
+lm: null
+use_lm: true
+use_swa: false
+lm_alpha: 0.5
+
+# URL for the biggest LeBenchmark wav2vec french.
+# wav2vec2_hub: ../wav2vec2_checkpoint
+wav2vec2_hub: dragonSwing/viwav2vec2-base-3k
+pretrained_tokenizer_path: ../virhyme
+lm_path: ../../lm/oscar_21_v3/lm.binary
+lm_vocab_path: ../../lm/oscar_21_v3/vocab-260000.txt
+
+# Data files
+data_folder: ../data # e.g, /localscratch/cv-corpus-5.1-2020-06-22/fr
+data_folder_rirs: ./ # e.g, /localscratch/cv-corpus-5.1-2020-06-22/fr
+train_csv: !ref <data_folder>/vivos_train.csv
+valid_csv: !ref <data_folder>/vivos_dev.csv
+test_csv: !ref <data_folder>/vivos_dev.csv
+sort_key: duration 
+sorting: ascending
+skip_prep: true # Skip data preparation
+
+# We remove utterance longer than 10s in the train/dev/test sets as
+# longer sentences certainly correspond to "open microphones".
+avoid_if_longer_than: 20
+avoid_if_shorter_than: 1
+
+# Training parameters
+number_of_epochs: 50
+lr: 0.0003
+lr_wav2vec: 0.00001
+ctc_weight: 0.3
+auto_mix_prec: false
+sample_rate: 16000
+ckpt_interval_minutes: 80 # save checkpoint every N min
+
+# With data_parallel batch_size is split into N jobs
+# With DDP batch_size is multiplied by N jobs
+# Must be 6 per GPU to fit 16GB of VRAM
+batch_size: 4
+test_batch_size: 1
+gradient_accumulation: 240
+accumulation_sec: 1600
+min_accumulation: 32
+
+dataloader_options:
+  batch_size: !ref <batch_size>
+  num_workers: 2
+  pin_memory: false
+  drop_last: True
+
+test_dataloader_options:
+  batch_size: !ref <test_batch_size>
+
+# Outputs
+output_neurons: 696 
+
+# Model parameters
+activation: !name:torch.nn.LeakyReLU
+dnn_layers: 2
+dnn_neurons: 768
+emb_size: 128
+dec_neurons: 768
+freeze_wav2vec: false
+freeze_feature_extractor: true
+apply_spec_augment: true
+normalize_wav: false
+output_norm: false
+
+# Decoding parameters
+# Be sure that the bos and eos index match with the BPEs ones
+blank_index: 0
+bos_index: 1
+eos_index: 2
+unk_index: 3
+min_decode_ratio: 0.0
+max_decode_ratio: 1.0
+beam_size: 80
+eos_threshold: 1.5
+using_max_attn_shift: True
+max_attn_shift: 140
+ctc_weight_decode: 0.0
+temperature: 1.50
+
+#
+# Functions and classes
+#
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+  limit: !ref <number_of_epochs>
+
+# Added noise and reverb come from OpenRIR dataset, automatically
+# downloaded and prepared with this Environmental Corruption class.
+
+corrupt_prob: 0.5
+env_corrupt: !new:speechbrain.lobes.augment.EnvCorrupt
+  openrir_folder: !ref <data_folder_rirs>
+  babble_prob: 0.0
+  reverb_prob: 0.2
+  noise_prob: 1.0
+  noise_snr_low: 10
+  noise_snr_high: 30
+
+augmentation: !new:speechbrain.processing.speech_augmentation.SpeedPerturb
+  orig_freq: !ref <sample_rate>
+  speeds: [90, 95, 100, 105, 110]
+
+# augmentation: !new:speechbrain.lobes.augment.TimeDomainSpecAugment
+#   sample_rate: !ref <sample_rate>
+#   speeds: [90, 95, 100, 105, 110]
+
+dropout: !new:torch.nn.Dropout
+  p: 0.1
+
+# dropout: !new:speechbrain.lobes.models.VanillaNN.VanillaNN
+#   input_shape: [null, null, !ref <dnn_neurons>]
+#   activation: !ref <activation>
+#   dnn_blocks: !ref <dnn_layers>
+#   dnn_neurons: !ref <dnn_neurons>
+
+wav2vec2: !new:speechbrain.lobes.models.huggingface_wav2vec.HuggingFaceWav2Vec2
+  source: !ref <wav2vec2_hub>
+  output_norm: !ref <output_norm>
+  freeze: !ref <freeze_wav2vec>
+  freeze_feature_extractor: !ref <freeze_feature_extractor>
+  apply_spec_augment: !ref <apply_spec_augment>
+  save_path: /content/pretrain
+
+tokenizer: !new:sentencepiece.SentencePieceProcessor
+
+lm_head: !new:speechbrain.nnet.linear.Linear
+  input_size: !ref <dnn_neurons>
+  n_neurons: !ref <output_neurons>
+
+log_softmax: !new:speechbrain.nnet.activations.Softmax
+  apply_log: True
+
+ctc_cost: !name:speechbrain.nnet.losses.ctc_loss
+  blank_index: !ref <blank_index>
+
+modules:
+  wav2vec2: !ref <wav2vec2>
+  dropout: !ref <dropout>
+  lm_head: !ref <lm_head>
+
+model: !new:torch.nn.ModuleList
+  - [!ref <dropout>, !ref <lm_head>]
+
+model_opt_class: !name:torch.optim.AdamW
+  lr: !ref <lr>
+  weight_decay: 0.005
+
+wav2vec_opt_class: !name:torch.optim.Adam
+  lr: !ref <lr_wav2vec>
+
+lr_annealing_model: !new:speechbrain.nnet.schedulers.NewBobScheduler
+  initial_value: !ref <lr>
+  improvement_threshold: 0.0025
+  annealing_factor: 0.9
+  patient: 1
+
+lr_annealing_wav2vec: !new:speechbrain.nnet.schedulers.NewBobScheduler
+  initial_value: !ref <lr_wav2vec>
+  improvement_threshold: 0.0025
+  annealing_factor: 0.95
+  patient: 1
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+  checkpoints_dir: !ref <save_folder>
+  recoverables:
+    wav2vec2: !ref <wav2vec2>
+    model: !ref <model>
+    scheduler_model: !ref <lr_annealing_model>
+    scheduler_wav2vec: !ref <lr_annealing_wav2vec>
+    counter: !ref <epoch_counter>
+
+train_logger: !new:speechbrain.utils.train_logger.WandBLogger
+  initializer: !name:wandb.init
+  project: wav2vec2_ctc
+  yaml_config: hparams/wandb.yaml
+
+train_logger_txt: !new:speechbrain.utils.train_logger.FileTrainLogger
+  save_file: !ref <train_log>
+
+error_rate_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
+  space_token: " "
+  merge_tokens: True
+
+cer_computer: !name:speechbrain.utils.metric_stats.ErrorRateStats
+  space_token: " "
+
+pretrainer: !new:speechbrain.utils.parameter_transfer.Pretrainer
+  collect_in: !ref <save_folder>
+  loadables:
+    tokenizer: !ref <tokenizer>
+  paths:
+    tokenizer: !ref <pretrained_tokenizer_path>
