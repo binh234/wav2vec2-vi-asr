@@ -77,7 +77,7 @@ dec_neurons: 768
 freeze_wav2vec: false
 freeze_feature_extractor: true
 apply_spec_augment: true
-normalize_wav: false
+normalize_wav: true
 output_norm: false
 
 # Decoding parameters
